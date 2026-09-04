@@ -1,0 +1,115 @@
+CREATE OR REPLACE PROCEDURE FIN_DATA_ANALYSIS.procedure_Aging_analysis_glistempdata(executemonth IN varchar2 )
+AS
+BEGIN 
+--清空上个月数据
+EXECUTE  IMMEDIATE 'TRUNCATE TABLE temp_month_group_insurance';
+EXECUTE  IMMEDIATE 'TRUNCATE TABLE temp_finally_FINANCE_Aging_analysis';
+
+-- 团险
+INSERT INTO temp_month_group_insurance (
+    id ,
+    SEGMENT1 ,   --公司
+    BRANCH_CODE, --机构
+    SEGMENT3,	--科目
+    SEGMENT3name,--科目名称
+    SEGMENT4,    --账户
+    DEFAULT_EFFECTIVE_DATE ,--凭证日期
+    ATTRIBUTE8, --保单号
+    POLICY_NO,  --保单号
+    amount ,    --金额
+    BUSINESS_NO, --业务号
+    JE_SOURCE   --来源
+)
+SELECT 
+    sequence_temp_month_group_insurance.nextval AS id,
+    f.SEGMENT1 ,   --公司
+	(case when SEGMENT1='100001' then '001' else 
+		 (SELECT DISTINCT (SUBSTR(a.BRANCH_CODE,1,9))  FROM FRS_DIM_COA_COAGING A WHERE LENGTH(BRANCH_CODE) >= 9 and a.SEGMENT1=f.SEGMENT1) END)  as BRANCH_CODE,
+    (CASE WHEN f.SEGMENT3 IN ('20710101','2612010101',
+'20710106',	'2612030106',
+'20710104',	'2612040101',
+'20710102',	'2612040401',
+'20710105',	'2612040501',
+'20710108',	'2612100101',
+'20710109',	'2612041001')  THEN '207101*' 
+          WHEN f.SEGMENT3 IN ('20710201','2612010111',
+'20710206',	'2612030108',
+'20710204',	'2612040111',
+'20710202',	'2612040411',
+'20710205',	'2612040511',
+'20710208',	'2612100111',
+'20710209',	'2612041002') THEN '207102*' ELSE 
+         f.SEGMENT3   --科目
+         END ) AS SEGMENT3,
+    (SELECT a.ACCOUNT_NAME FROM MRT.FRS_DIM_COA_AC a WHERE a.ACCOUNT_CODE = f.SEGMENT3) as SEGMENT3name, --科目名称
+	(case when f.SEGMENT3 in ('2243010106','1221030601') then f.SEGMENT4  else null END )  as SEGMENT4, --账户
+    f.DEFAULT_EFFECTIVE_DATE,  --凭证日期
+    f.POLICY_NO AS ATTRIBUTE8 ,   --保单号
+    f.POLICY_NO as  POLICY_NO,   --保单号
+    nvl(f.ENTERED_DR, -f.ENTERED_cR) AS amount,   --金额
+    nvl(F.BUSINESS_NO,F.POLICY_NO) AS  BUSINESS_NO, --业务号
+    'GLIS' JE_SOURCE
+FROM mrt.FRS_ODS_DW_SLA_LINES f
+WHERE 
+    f.LEDGER_ID != 2222 
+    AND f.PERIOD_NAME = executemonth 
+    AND f.JE_SOURCE IN ('GLI','GLIS')
+    AND SEGMENT3 IN (SELECT a.SUBJECT FROM SUBJECTENUMERATIONAGING a WHERE a.JE_SOURCE ='GLIS')
+	and f.SHORT_NAME  not like 'THTF_I17%';
+   
+   
+-- 团险
+INSERT INTO temp_month_group_insurance (
+    id ,
+    SEGMENT1 ,   --公司
+    BRANCH_CODE, --机构
+    SEGMENT3,	--科目
+    SEGMENT3name,--科目名称
+    SEGMENT4,    --账户
+    DEFAULT_EFFECTIVE_DATE ,--凭证日期
+    ATTRIBUTE8, --保单号
+    POLICY_NO,  --保单号
+    amount ,    --金额
+    BUSINESS_NO, --业务号
+    JE_SOURCE   --来源
+)
+SELECT 
+    sequence_temp_month_group_insurance.nextval AS id,
+    f.SEGMENT1 ,   --公司
+    (case when SEGMENT1='100001' then '001' else 
+		 (SELECT DISTINCT (SUBSTR(a.BRANCH_CODE,1,9))  FROM FRS_DIM_COA_COAGING A WHERE LENGTH(BRANCH_CODE) >= 9 and a.SEGMENT1=f.SEGMENT1) END)  as BRANCH_CODE,
+    (CASE WHEN f.SEGMENT3 IN ('20710101','2612010101',
+'20710106',	'2612030106',
+'20710104',	'2612040101',
+'20710102',	'2612040401',
+'20710105',	'2612040501',
+'20710108',	'2612100101',
+'20710109',	'2612041001')  THEN '207101*' 
+          WHEN f.SEGMENT3 IN ('20710201','2612010111',
+'20710206',	'2612030108',
+'20710204',	'2612040111',
+'20710202',	'2612040411',
+'20710205',	'2612040511',
+'20710208',	'2612100111',
+'20710209',	'2612041002') THEN '207102*' ELSE 
+         f.SEGMENT3   --科目
+         END ) AS SEGMENT3,
+    (SELECT a.ACCOUNT_NAME FROM MRT.FRS_DIM_COA_AC a WHERE a.ACCOUNT_CODE = f.SEGMENT3) as SEGMENT3name, --科目名称
+    f.SEGMENT4,  --账户 
+    f.DEFAULT_EFFECTIVE_DATE,  --凭证日期
+    f.POLICY_NO as  ATTRIBUTE8,   --保单号
+    f.POLICY_NO as  POLICY_NO,   --保单号
+    nvl(f.ENTERED_DR, -f.ENTERED_cR) AS amount,   --金额
+    nvl(F.BUSINESS_NO,F.POLICY_NO) AS  BUSINESS_NO, --业务号
+    'GLIS' JE_SOURCE
+FROM mrt.FRS_ODS_DW_SLA_LINES f
+WHERE 
+    f.LEDGER_ID != 2222 
+    AND f.PERIOD_NAME = executemonth 
+    AND f.JE_SOURCE IN ('FCS')
+    AND SEGMENT3 IN ('2203010202','1221030601')
+	and f.SHORT_NAME  not like 'THTF_I17%';
+
+    -- 提交事务
+    COMMIT;
+END ;
