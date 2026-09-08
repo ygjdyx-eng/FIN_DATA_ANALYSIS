@@ -46,7 +46,7 @@ SELECT
     f.DEFAULT_EFFECTIVE_DATE,  --凭证日期
     f.POLICY_NO AS ATTRIBUTE8 ,   --保单号
     f.POLICY_NO as  POLICY_NO,   --保单号
-    nvl(f.ENTERED_DR, -f.ENTERED_cR) AS amount,   --金额
+    NVL(f.ENTERED_DR, 0) - NVL(f.ENTERED_CR, 0) AS amount,   --金额
     nvl(F.BUSINESS_NO,F.POLICY_NO) AS  BUSINESS_NO, --业务号
     'GLIS' JE_SOURCE
 FROM mrt.FRS_ODS_DW_SLA_LINES f
@@ -99,7 +99,7 @@ SELECT
     f.DEFAULT_EFFECTIVE_DATE,  --凭证日期
     f.POLICY_NO as  ATTRIBUTE8,   --保单号
     f.POLICY_NO as  POLICY_NO,   --保单号
-    nvl(f.ENTERED_DR, -f.ENTERED_cR) AS amount,   --金额
+    NVL(f.ENTERED_DR, 0) - NVL(f.ENTERED_CR, 0) AS amount,   --金额
     nvl(F.BUSINESS_NO,F.POLICY_NO) AS  BUSINESS_NO, --业务号
     'GLIS' JE_SOURCE
 FROM mrt.FRS_ODS_DW_SLA_LINES f

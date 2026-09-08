@@ -33,7 +33,7 @@ BEGIN
 		      when f.SEGMENT3 ='2243010102' and f.SEGMENT4  in ('1401','1402','1403','1404','1405','1406','1407','1408') then '1401-1408' 
 			  else null END )  as SEGMENT4, --账户
         f.DEFAULT_EFFECTIVE_DATE, --凭证日期
-        nvl(f.ENTERED_DR, -f.ENTERED_cR) AS amount,--金额
+        NVL(f.ENTERED_DR, 0) - NVL(f.ENTERED_CR, 0) AS amount,--金额
         (case when SEGMENT1='100001' then '001' else 
 		 (SELECT DISTINCT (SUBSTR(a.BRANCH_CODE,1,9))  FROM FRS_DIM_COA_COAGING A WHERE LENGTH(BRANCH_CODE) >= 9 and a.SEGMENT1=f.SEGMENT1) END)  as BRANCH_CODE,
         f.SEGMENT1,
