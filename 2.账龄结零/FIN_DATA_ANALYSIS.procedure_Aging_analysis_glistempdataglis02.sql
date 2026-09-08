@@ -108,7 +108,8 @@ INSERT INTO temp_FINANCE_Aging_analysis (
     AND NVL(tm1.JE_SOURCE,'null')  = NVL(tm2.JE_SOURCE,'null');
    
 
-       vt_sql:='update temp_FINANCE_Aging_analysis set ZERO_CLOSING_MARKER=''2'',UPDATE_DATE = SYSDATE where id in (
+       -- SHORT_NAME记录本行被本次YYYYMM处理结零，供人工重跑按月恢复。
+       vt_sql:='update temp_FINANCE_Aging_analysis set ZERO_CLOSING_MARKER=''2'',UPDATE_DATE = SYSDATE,SHORT_NAME=:close_month where id in (
 					SELECT ID FROM (
 							select POLICY_NO,SUBJECT_ID from temp_FINANCE_Aging_analysis a 
 	                        WHERE DEFAULT_EFFECTIVE_DATE>=DATE ''2018-10-10'' and a.ZERO_CLOSING_MARKER=''0'' and a.JE_SOURCE =''GLIS'' AND a.SUBJECT_ID NOT IN (''2243010106'')
@@ -120,11 +121,12 @@ INSERT INTO temp_FINANCE_Aging_analysis (
 						 ) c
 					    ON A.POLICY_NO= c.POLICY_NO AND A.SUBJECT_ID=C.SUBJECT_ID 
 				 )';
-       EXECUTE IMMEDIATE vt_sql;
+       EXECUTE IMMEDIATE vt_sql USING executemonth;
        COMMIT;
 	   
 	   
-	   vt_sql:='update temp_FINANCE_Aging_analysis set ZERO_CLOSING_MARKER=''2'',UPDATE_DATE = SYSDATE where id in (
+	   -- SHORT_NAME记录本行被本次YYYYMM处理结零，供人工重跑按月恢复。
+	   vt_sql:='update temp_FINANCE_Aging_analysis set ZERO_CLOSING_MARKER=''2'',UPDATE_DATE = SYSDATE,SHORT_NAME=:close_month where id in (
 					SELECT ID FROM (
 							select POLICY_NO,SUBJECT_ID,BUSINESS_NO from temp_FINANCE_Aging_analysis a 
 	                        WHERE DEFAULT_EFFECTIVE_DATE>=DATE ''2018-10-10'' and a.ZERO_CLOSING_MARKER=''0'' and a.JE_SOURCE =''GLIS'' AND a.SUBJECT_ID NOT IN (''2243010106'')
@@ -136,7 +138,7 @@ INSERT INTO temp_FINANCE_Aging_analysis (
 						 ) c
 					    ON A.POLICY_NO= c.POLICY_NO AND A.SUBJECT_ID=C.SUBJECT_ID AND A.BUSINESS_NO = c.BUSINESS_NO
 				 )';
-       EXECUTE IMMEDIATE vt_sql;
+       EXECUTE IMMEDIATE vt_sql USING executemonth;
        COMMIT;
    
 --筛选临时账龄表 金额<>0的数据,进行查询，对账龄进行处理，此处为明细
@@ -227,9 +229,9 @@ SELECT
     faa.FINANCE_DSTRBTR_SOURCE, --财务渠道
     '0' AS ZERO_CLOSING_MARKER
 FROM temp_FINANCE_AGING_ANALYSIS faa
+-- 仅汇总未结零明细；SHORT_NAME只记录结零年月，不参与业务分组和关联。
 JOIN (
     SELECT 
-        SHORT_NAME,
         PERIOD_NAME,
         subject_id,
         PRODUCT_NO,
@@ -239,8 +241,8 @@ JOIN (
         JE_SOURCE,
         ACCOUNT_SEGMENT
     FROM TEMP_FINANCE_AGING_ANALYSIS
+    WHERE ZERO_CLOSING_MARKER = '0'
     GROUP BY 
-        SHORT_NAME,
         PERIOD_NAME,
         subject_id,
         PRODUCT_NO,
@@ -251,8 +253,7 @@ JOIN (
         ACCOUNT_SEGMENT
     HAVING SUM(amount) <> 0
 ) tfaa 
-    ON NVL(faa.SHORT_NAME,'null') = NVL(tfaa.SHORT_NAME,'null')
-    AND NVL(faa.PERIOD_NAME,'null') = NVL(tfaa.PERIOD_NAME,'null')
+    ON NVL(faa.PERIOD_NAME,'null') = NVL(tfaa.PERIOD_NAME,'null')
     AND NVL(faa.subject_id,'null') = NVL(tfaa.subject_id,'null')
     AND NVL(faa.PRODUCT_NO,'null') = NVL(tfaa.PRODUCT_NO,'null')
     AND NVL(faa.POLICY_NO,'null') = NVL(tfaa.POLICY_NO,'null')

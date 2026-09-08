@@ -155,7 +155,8 @@ JOIN (
     AND NVL(tm1.JE_SOURCE,'null') = NVL(tm2.JE_SOURCE,'null');
    --WHERE tm1.PERIOD_NAME =executemonth;
 FOR recday  IN  c_aging_idsday  LOOP   
-    vt_sql:='update TEMP_FINANCE_AGING_ANALYSISPLIS11 set ZERO_CLOSING_MARKER=''2'' where id in (
+    -- SHORT_NAME记录本行被本次YYYYMM处理结零，供人工重跑按月恢复。
+    vt_sql:='update TEMP_FINANCE_AGING_ANALYSISPLIS11 set ZERO_CLOSING_MARKER=''2'', SHORT_NAME=:close_month where ZERO_CLOSING_MARKER=''0'' and id in (
 SELECT ID FROM (
 select POLICY_NO,SUBJECT_ID from TEMP_FINANCE_AGING_ANALYSISPLIS11 a 
 WHERE DEFAULT_EFFECTIVE_DATE>=DATE ''2018-10-10'' AND DEFAULT_EFFECTIVE_DATE<= :enddate
@@ -166,7 +167,7 @@ WHERE B.DEFAULT_EFFECTIVE_DATE>=DATE ''2018-10-10'' AND DEFAULT_EFFECTIVE_DATE<=
 ON A.POLICY_NO= c.POLICY_NO
 AND A.SUBJECT_ID=C.SUBJECT_ID )';
 
-    EXECUTE IMMEDIATE vt_sql USING recday.lastday,recday.lastday;
+    EXECUTE IMMEDIATE vt_sql USING executemonth,recday.lastday,recday.lastday;
     COMMIT;
     END LOOP; 
    
@@ -259,9 +260,9 @@ SELECT
     faa.PRODUCT_CODE_NEWNAME,
     '0' AS ZERO_CLOSING_MARKER
 FROM TEMP_FINANCE_AGING_ANALYSISPLIS11 faa
+-- 仅汇总未结零明细；SHORT_NAME只记录结零年月，不参与业务分组和关联。
 JOIN (
     SELECT 
-        SHORT_NAME,
         PERIOD_NAME,
         subject_id,
         PRODUCT_NO,
@@ -271,8 +272,8 @@ JOIN (
         JE_SOURCE,
         ACCOUNT_SEGMENT
     FROM TEMP_FINANCE_AGING_ANALYSISPLIS11
+    WHERE ZERO_CLOSING_MARKER = '0'
     GROUP BY 
-        SHORT_NAME,
         PERIOD_NAME,
         subject_id,
         PRODUCT_NO,
@@ -283,8 +284,7 @@ JOIN (
         ACCOUNT_SEGMENT
     HAVING SUM(amount) <> 0
 ) tfaa 
-    ON NVL(faa.SHORT_NAME,'null') = NVL(tfaa.SHORT_NAME,'null')
-    AND NVL(faa.PERIOD_NAME,'null') = NVL(tfaa.PERIOD_NAME,'null')
+    ON NVL(faa.PERIOD_NAME,'null') = NVL(tfaa.PERIOD_NAME,'null')
     AND NVL(faa.subject_id,'null') = NVL(tfaa.subject_id,'null')
     AND NVL(faa.PRODUCT_NO,'null') = NVL(tfaa.PRODUCT_NO,'null')
     AND NVL(faa.POLICY_NO,'null') = NVL(tfaa.POLICY_NO,'null')
@@ -311,7 +311,7 @@ FOR rec  IN  c_aging_ids  LOOP
 	
     --对可结零的数据下次不再展示 
 	v_sql:='
-    UPDATE TEMP_FINANCE_AGING_ANALYSISPLIS11 a SET ZERO_CLOSING_MARKER=''1''  WHERE a.ID IN (
+    UPDATE TEMP_FINANCE_AGING_ANALYSISPLIS11 a SET ZERO_CLOSING_MARKER=''1'', SHORT_NAME=:close_month WHERE a.ZERO_CLOSING_MARKER=''0'' AND a.ID IN (
 	SELECT aa.id FROM 
 	(SELECT  
          DISTRICT_ID,SUBJECT_ID ,a.POLICY_NO,sum(a.AMOUNT)
@@ -332,7 +332,7 @@ FOR rec  IN  c_aging_ids  LOOP
     AND aa.SUBJECT_ID=B.SUBJECT_ID 
     AND aa.AGING_MONTH IN (SELECT AGINGMOT FROM TEMP_AGING_COMBIN a  WHERE id = :bind_pid))';
    
-    EXECUTE IMMEDIATE v_sql USING rec.id, V_LAST_MONTH_END,V_LAST_MONTH_END,V_LAST_MONTH_END,V_LAST_MONTH_END,rec.id;
+    EXECUTE IMMEDIATE v_sql USING executemonth,rec.id,V_LAST_MONTH_END,V_LAST_MONTH_END,V_LAST_MONTH_END,V_LAST_MONTH_END,rec.id;
     EXECUTE IMMEDIATE v_fristsql USING rec.id,rec.id;
     COMMIT;
     END LOOP;
