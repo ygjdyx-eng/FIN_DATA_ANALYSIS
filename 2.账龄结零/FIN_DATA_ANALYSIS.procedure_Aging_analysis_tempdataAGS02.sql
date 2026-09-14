@@ -1,7 +1,7 @@
 CREATE OR REPLACE PROCEDURE FIN_DATA_ANALYSIS.procedure_Aging_analysis_tempdataags02(executemonth IN varchar2) AS
  
 
-    V_LAST_MONTH_END VARCHAR(20); --  自己输入月份的月末 20190228
+    V_LAST_MONTH_END DATE; -- 传入处理月份的月末；使用DATE避免日期与字符隐式转换。
     insert_counter NUMBER := 0;
     vt_sql VARCHAR2(32767);  -- 定义sql
     v_fristsql VARCHAR2(32767);
@@ -11,7 +11,7 @@ CREATE OR REPLACE PROCEDURE FIN_DATA_ANALYSIS.procedure_Aging_analysis_tempdataa
 
 BEGIN
 	
-	SELECT LAST_DAY(ADD_MONTHS(SYSDATE, -1)) INTO V_LAST_MONTH_END FROM DUAL;
+	SELECT LAST_DAY(TO_DATE(executemonth, 'YYYY-MM')) INTO V_LAST_MONTH_END FROM DUAL;
    
     -- 开始执行
     INSERT INTO course_method_log (id, EXECUTE_MONTH, METHOD_NAME, METHOD_STATUS, DESCRIPTION)
@@ -262,7 +262,11 @@ JOIN (
         AGENT_NAME,
         DEFAULT_EFFECTIVE_DATE
     FROM TEMP_FINANCE_AGING_ANALYSIS
-    GROUP BY 
+    -- 与外层明细使用相同状态范围，已结零/已处理记录不参与金额汇总。
+    WHERE JE_SOURCE = 'AGS'
+      AND HANDLE_STATUS = 0
+      AND ZERO_CLOSING_MARKER = '0'
+    GROUP BY
         SHORT_NAME,
         PERIOD_NAME,
         BRANCH_CODE,

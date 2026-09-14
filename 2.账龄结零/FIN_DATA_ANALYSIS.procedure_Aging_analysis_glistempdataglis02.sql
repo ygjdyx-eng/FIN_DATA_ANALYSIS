@@ -109,15 +109,15 @@ INSERT INTO temp_FINANCE_Aging_analysis (
    
 
        -- SHORT_NAME记录本行被本次YYYYMM处理结零，供人工重跑按月恢复。
-       vt_sql:='update temp_FINANCE_Aging_analysis set ZERO_CLOSING_MARKER=''2'',UPDATE_DATE = SYSDATE,SHORT_NAME=:close_month where id in (
+       vt_sql:='update temp_FINANCE_Aging_analysis set ZERO_CLOSING_MARKER=''2'',UPDATE_DATE = SYSDATE,SHORT_NAME=:close_month where ZERO_CLOSING_MARKER=''0'' AND HANDLE_STATUS=0 AND id in (
 					SELECT ID FROM (
 							select POLICY_NO,SUBJECT_ID from temp_FINANCE_Aging_analysis a 
-	                        WHERE DEFAULT_EFFECTIVE_DATE>=DATE ''2018-10-10'' and a.ZERO_CLOSING_MARKER=''0'' and a.JE_SOURCE =''GLIS'' AND a.SUBJECT_ID NOT IN (''2243010106'')
+	                        WHERE DEFAULT_EFFECTIVE_DATE>=DATE ''2018-10-10'' and a.ZERO_CLOSING_MARKER=''0'' AND a.HANDLE_STATUS=0 and a.JE_SOURCE =''GLIS'' AND a.SUBJECT_ID NOT IN (''2243010106'')
 							GROUP BY SUBJECT_ID ,A.POLICY_NO HAVING  SUM(A.AMOUNT)=0
 						) A LEFT JOIN 
 						(
                          SELECT SUBJECT_ID,POLICY_NO,B.ID FROM temp_FINANCE_Aging_analysis B 
-					     WHERE b.JE_SOURCE = ''GLIS'' and B.DEFAULT_EFFECTIVE_DATE >= DATE''2018-10-10'' and b.ZERO_CLOSING_MARKER=''0'' AND b.SUBJECT_ID NOT IN (''2243010106'')
+					     WHERE b.JE_SOURCE = ''GLIS'' and B.DEFAULT_EFFECTIVE_DATE >= DATE''2018-10-10'' and b.ZERO_CLOSING_MARKER=''0'' AND b.HANDLE_STATUS=0 AND b.SUBJECT_ID NOT IN (''2243010106'')
 						 ) c
 					    ON A.POLICY_NO= c.POLICY_NO AND A.SUBJECT_ID=C.SUBJECT_ID 
 				 )';
@@ -126,15 +126,15 @@ INSERT INTO temp_FINANCE_Aging_analysis (
 	   
 	   
 	   -- SHORT_NAME记录本行被本次YYYYMM处理结零，供人工重跑按月恢复。
-	   vt_sql:='update temp_FINANCE_Aging_analysis set ZERO_CLOSING_MARKER=''2'',UPDATE_DATE = SYSDATE,SHORT_NAME=:close_month where id in (
+	   vt_sql:='update temp_FINANCE_Aging_analysis set ZERO_CLOSING_MARKER=''2'',UPDATE_DATE = SYSDATE,SHORT_NAME=:close_month where ZERO_CLOSING_MARKER=''0'' AND HANDLE_STATUS=0 AND id in (
 					SELECT ID FROM (
 							select POLICY_NO,SUBJECT_ID,BUSINESS_NO from temp_FINANCE_Aging_analysis a 
-	                        WHERE DEFAULT_EFFECTIVE_DATE>=DATE ''2018-10-10'' and a.ZERO_CLOSING_MARKER=''0'' and a.JE_SOURCE =''GLIS'' AND a.SUBJECT_ID NOT IN (''2243010106'')
+	                        WHERE DEFAULT_EFFECTIVE_DATE>=DATE ''2018-10-10'' and a.ZERO_CLOSING_MARKER=''0'' AND a.HANDLE_STATUS=0 and a.JE_SOURCE =''GLIS'' AND a.SUBJECT_ID NOT IN (''2243010106'')
 							GROUP BY SUBJECT_ID ,A.POLICY_NO,BUSINESS_NO HAVING SUM(A.AMOUNT)=0
 						) A LEFT JOIN 
 						(
                          SELECT SUBJECT_ID,POLICY_NO,B.ID,B.BUSINESS_NO FROM temp_FINANCE_Aging_analysis B 
-					     WHERE b.JE_SOURCE = ''GLIS'' and B.DEFAULT_EFFECTIVE_DATE >= DATE''2018-10-10'' and b.ZERO_CLOSING_MARKER=''0'' AND b.SUBJECT_ID NOT IN (''2243010106'')
+					     WHERE b.JE_SOURCE = ''GLIS'' and B.DEFAULT_EFFECTIVE_DATE >= DATE''2018-10-10'' and b.ZERO_CLOSING_MARKER=''0'' AND b.HANDLE_STATUS=0 AND b.SUBJECT_ID NOT IN (''2243010106'')
 						 ) c
 					    ON A.POLICY_NO= c.POLICY_NO AND A.SUBJECT_ID=C.SUBJECT_ID AND A.BUSINESS_NO = c.BUSINESS_NO
 				 )';
@@ -229,7 +229,7 @@ SELECT
     faa.FINANCE_DSTRBTR_SOURCE, --财务渠道
     '0' AS ZERO_CLOSING_MARKER
 FROM temp_FINANCE_AGING_ANALYSIS faa
--- 仅汇总未结零明细；SHORT_NAME只记录结零年月，不参与业务分组和关联。
+-- 仅汇总未结零且HANDLE_STATUS=0的明细；SHORT_NAME只记录结零年月，不参与业务分组和关联。
 JOIN (
     SELECT 
         PERIOD_NAME,
@@ -241,7 +241,7 @@ JOIN (
         JE_SOURCE,
         ACCOUNT_SEGMENT
     FROM TEMP_FINANCE_AGING_ANALYSIS
-    WHERE ZERO_CLOSING_MARKER = '0'
+    WHERE ZERO_CLOSING_MARKER = '0' AND HANDLE_STATUS = 0
     GROUP BY 
         PERIOD_NAME,
         subject_id,
