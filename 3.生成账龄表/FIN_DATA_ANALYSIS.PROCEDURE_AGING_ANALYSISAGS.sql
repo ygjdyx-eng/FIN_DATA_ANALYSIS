@@ -22,7 +22,9 @@ BEGIN
  		--AND tfaa.amount=faa.amount
  		--AND tfaa.amountflag='D'
  		--);
- 		SELECT count(id) INTO finallycount FROM temp_finally_FINANCE_Aging_analysis;
+    SELECT count(id) INTO finallycount
+        FROM temp_finally_FINANCE_Aging_analysis
+        WHERE JE_SOURCE = 'AGS';
  		IF finallycount>0 THEN
  
 
@@ -64,141 +66,129 @@ INSERT INTO FINANCE_Aging_analysis (
     FINANCE_DSTRBTR_SOURCE,
     AGING_PERIOD --账龄开始时间
 )
-SELECT 
-    sequence_FINANCE_Aging_analysis.nextval AS id,
-    subquery_result.SHORT_NAME,
-    subquery_result.PRODUCT_NO,
-    --subquery_result.PRODUCT_CODE,
-    subquery_result.PERIOD_NAME,
-    subquery_result.subject_id,
-    subquery_result.subject_name,
-    subquery_result.sum_amount AS amount,
-    subquery_result.DEFAULT_EFFECTIVE_DATE,
-    subquery_result.aging_month,
-    subquery_result.handle_status,
-    subquery_result.execute_method,
-    subquery_result.district_id,
-    --(CASE  WHEN subquery_result.SUBJECT_ID ='2202020203'
-    --    THEN (SELECT a.BRANCH_LV2_NAME FROM mrt.FRS_DIM_COA_CO a WHERE a.BRANCH_LV2_CODE =subquery_result.district_id) 
-    --    else
-    (SELECT a.BRANCH_NAME FROM mrt.FRS_DIM_COA_CO a WHERE a. BRANCH_CODE =subquery_result.district_id) 
-    -- end)
-    AS DISTRICT_NAME, --地址名称
-    subquery_result.JE_SOURCE,
-    subquery_result.BRANCH_CODE,
-    subquery_result.START_DT,
-    subquery_result.ACKNWLDG_RCPT_DT,
-    subquery_result.BACK_VISITING_DATE,
-    subquery_result.STATUS,
-    subquery_result.AGENT_NAME,
-    subquery_result.AGENT_STATUS,
-    subquery_result.LINE_DESCIPTION,
-    subquery_result.DSTRBTR_HEAD_CODE,
-    subquery_result.DSTRBTR_HEAD_NAME,
-    subquery_result.partner_id,
-    subquery_result.POLICY_NO,
-    subquery_result.DSTRBTR_OID,
-    subquery_result.DSTRBTR_CODE,
-    subquery_result.DSTRBTR_SOURCE,
-    subquery_result.BUSINESS_SCENE_NO,
-    subquery_result.PRODUCT_CODE_NEW,
-    subquery_result.PRODUCT_CODE_NEWNAME,
-    subquery_result.FINANCE_DSTRBTR_SOURCE,
-    executemonth  AS AGING_PERIOD
-FROM (
-    SELECT 
-        SHORT_NAME,
-        PRODUCT_NO,
-        PRODUCT_CODE,
-        PERIOD_NAME,
-        a.subject_id,
-        subject_name,
-        SUM(amount) AS sum_amount,
-        DEFAULT_EFFECTIVE_DATE,
-        aging_month,
-        handle_status,
-        execute_method,
-        a.district_id,
-        a.JE_SOURCE,
-        SUBSTR(BRANCH_CODE, 1, 9) AS BRANCH_CODE,
-        START_DT,
-        ACKNWLDG_RCPT_DT,
-        BACK_VISITING_DATE,
-        STATUS,
-        AGENT_NAME,
-        AGENT_STATUS,
-        LINE_DESCIPTION,
-        DSTRBTR_HEAD_CODE,
-        DSTRBTR_HEAD_NAME,
-        partner_id,
-        a.POLICY_NO,
-        DSTRBTR_OID,
-        DSTRBTR_CODE,
-        a.DSTRBTR_SOURCE,
-        BUSINESS_SCENE_NO,
-        PRODUCT_CODE_NEW,
-        PRODUCT_CODE_NEWNAME,
-        FINANCE_DSTRBTR_SOURCE
-    FROM 
-        temp_finally_FINANCE_Aging_analysis a  
-        JOIN (
-        --按照 机构，保单号，科目，渠道进行分组，合计金额是不为0进行核销排除
-        SELECT  subject_id,
-                b.POLICY_NO,
-                DISTRICT_ID,
-                JE_SOURCE,
-                DSTRBTR_SOURCE 
-         FROM temp_finally_FINANCE_Aging_analysis  b 
-         WHERE 1=1 
-         GROUP BY  
-             subject_id,
-             b.POLICY_NO,
-             DISTRICT_ID,
-             JE_SOURCE,
-             DSTRBTR_SOURCE
-        HAVING SUM(amount) <> 0
-    ) tm2   
-    ON  NVL(a.subject_id,'null')  =NVL( tm2.subject_id ,'null')
-    and  NVL(a.POLICY_NO,'null')  =NVL( tm2.POLICY_NO ,'null')
-    and  NVL(a.DISTRICT_ID,'null')  =NVL( tm2.DISTRICT_ID ,'null')
-    and  NVL(a.JE_SOURCE,'null')  =NVL( tm2.JE_SOURCE ,'null')
-    and  NVL(a.DSTRBTR_SOURCE,'null')  =NVL( tm2.DSTRBTR_SOURCE ,'null')
-    WHERE 
-       a.JE_SOURCE = 'AGS'
-    GROUP BY 
-        LEDGER_ID,
-        SHORT_NAME,
-        PRODUCT_NO,
-        PRODUCT_CODE,
-        PERIOD_NAME,
-        a.subject_id,
-        subject_name,
-        DEFAULT_EFFECTIVE_DATE,
-        aging_month,
-        handle_status,
-        execute_method,
-        a.district_id,
-        a.JE_SOURCE,
-        SUBSTR(a.BRANCH_CODE, 1, 9),
-        START_DT,
-        ACKNWLDG_RCPT_DT,
-        BACK_VISITING_DATE,
-        STATUS,
-        AGENT_NAME,
-        AGENT_STATUS,
-        LINE_DESCIPTION,
-        DSTRBTR_HEAD_CODE,
-        DSTRBTR_HEAD_NAME,
-        partner_id,
-        a.POLICY_NO,
-        DSTRBTR_OID,
-        DSTRBTR_CODE,
-        a.DSTRBTR_SOURCE,
-        BUSINESS_SCENE_NO,
-        PRODUCT_CODE_NEW,
-        PRODUCT_CODE_NEWNAME,
-        FINANCE_DSTRBTR_SOURCE
-) subquery_result WHERE sum_amount<>'0';
+WITH policy_totals AS (
+    -- 仅取本次运行的AGS中间数据；窗口汇总代替原来的分组自关联。
+    SELECT a.*,
+           SUM(a.AMOUNT) OVER (
+               PARTITION BY a.SUBJECT_ID,
+                            a.POLICY_NO,
+                            a.DISTRICT_ID,
+                            a.JE_SOURCE,
+                            a.DSTRBTR_SOURCE
+           ) AS POLICY_AMOUNT
+    FROM FIN_DATA_ANALYSIS.TEMP_FINALLY_FINANCE_AGING_ANALYSIS a
+    WHERE a.JE_SOURCE = 'AGS'
+),
+grouped_result AS (
+    -- 保留原来的完整结果分组，包括不写入结果表的LEDGER_ID、PRODUCT_CODE。
+    SELECT p.LEDGER_ID,
+           p.SHORT_NAME,
+           p.PRODUCT_NO,
+           p.PRODUCT_CODE,
+           p.PERIOD_NAME,
+           p.SUBJECT_ID,
+           p.SUBJECT_NAME,
+           SUM(p.AMOUNT) AS AMOUNT,
+           p.DEFAULT_EFFECTIVE_DATE,
+           p.AGING_MONTH,
+           p.HANDLE_STATUS,
+           p.EXECUTE_METHOD,
+           p.DISTRICT_ID,
+           p.JE_SOURCE,
+           SUBSTR(p.BRANCH_CODE, 1, 9) AS BRANCH_CODE,
+           p.START_DT,
+           p.ACKNWLDG_RCPT_DT,
+           p.BACK_VISITING_DATE,
+           p.STATUS,
+           p.AGENT_NAME,
+           p.AGENT_STATUS,
+           p.LINE_DESCIPTION,
+           p.DSTRBTR_HEAD_CODE,
+           p.DSTRBTR_HEAD_NAME,
+           p.PARTNER_ID,
+           p.POLICY_NO,
+           p.DSTRBTR_OID,
+           p.DSTRBTR_CODE,
+           p.DSTRBTR_SOURCE,
+           p.BUSINESS_SCENE_NO,
+           p.PRODUCT_CODE_NEW,
+           p.PRODUCT_CODE_NEWNAME,
+           p.FINANCE_DSTRBTR_SOURCE
+    FROM policy_totals p
+    WHERE p.JE_SOURCE = 'AGS'
+      AND p.POLICY_AMOUNT <> 0
+    GROUP BY p.LEDGER_ID,
+             p.SHORT_NAME,
+             p.PRODUCT_NO,
+             p.PRODUCT_CODE,
+             p.PERIOD_NAME,
+             p.SUBJECT_ID,
+             p.SUBJECT_NAME,
+             p.DEFAULT_EFFECTIVE_DATE,
+             p.AGING_MONTH,
+             p.HANDLE_STATUS,
+             p.EXECUTE_METHOD,
+             p.DISTRICT_ID,
+             p.JE_SOURCE,
+             SUBSTR(p.BRANCH_CODE, 1, 9),
+             p.START_DT,
+             p.ACKNWLDG_RCPT_DT,
+             p.BACK_VISITING_DATE,
+             p.STATUS,
+             p.AGENT_NAME,
+             p.AGENT_STATUS,
+             p.LINE_DESCIPTION,
+             p.DSTRBTR_HEAD_CODE,
+             p.DSTRBTR_HEAD_NAME,
+             p.PARTNER_ID,
+             p.POLICY_NO,
+             p.DSTRBTR_OID,
+             p.DSTRBTR_CODE,
+             p.DSTRBTR_SOURCE,
+             p.BUSINESS_SCENE_NO,
+             p.PRODUCT_CODE_NEW,
+             p.PRODUCT_CODE_NEWNAME,
+             p.FINANCE_DSTRBTR_SOURCE
+    HAVING SUM(p.AMOUNT) <> 0
+)
+SELECT sequence_FINANCE_Aging_analysis.nextval AS id,
+       g.SHORT_NAME,
+       g.PRODUCT_NO,
+       g.PERIOD_NAME,
+       g.SUBJECT_ID,
+       g.SUBJECT_NAME,
+       g.AMOUNT,
+       g.DEFAULT_EFFECTIVE_DATE,
+       g.AGING_MONTH,
+       g.HANDLE_STATUS,
+       g.EXECUTE_METHOD,
+       g.DISTRICT_ID,
+       (SELECT d.BRANCH_NAME
+          FROM MRT.FRS_DIM_COA_CO d
+         WHERE d.BRANCH_CODE = g.DISTRICT_ID) AS DISTRICT_NAME,
+       g.JE_SOURCE,
+       g.BRANCH_CODE,
+       g.START_DT,
+       g.ACKNWLDG_RCPT_DT,
+       g.BACK_VISITING_DATE,
+       g.STATUS,
+       g.AGENT_NAME,
+       g.AGENT_STATUS,
+       g.LINE_DESCIPTION,
+       g.DSTRBTR_HEAD_CODE,
+       g.DSTRBTR_HEAD_NAME,
+       g.PARTNER_ID,
+       g.POLICY_NO,
+       g.DSTRBTR_OID,
+       g.DSTRBTR_CODE,
+       g.DSTRBTR_SOURCE AS CHANNEL_CODE,
+       g.BUSINESS_SCENE_NO,
+       g.PRODUCT_CODE_NEW,
+       g.PRODUCT_CODE_NEWNAME,
+       g.FINANCE_DSTRBTR_SOURCE,
+       executemonth AS AGING_PERIOD
+FROM grouped_result g
+WHERE g.JE_SOURCE = 'AGS';
 
  		-- 执行结束记录日志  
  		INSERT INTO course_method_log (id,EXECUTE_MONTH,METHOD_NAME,METHOD_STATUS,DESCRIPTION) VALUES (sequence_course_method_log.nextval,executemonth,'procedure_Aging_analysis','END','【账龄数据生成】方法执行结束');
