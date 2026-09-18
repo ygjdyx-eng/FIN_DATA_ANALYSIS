@@ -33,14 +33,6 @@ BEGIN
       GROUP BY a.POLICY_NO ,a.BRANCH_CODE,a.JE_SOURCE,SUBJECT_ID  HAVING sum(a.AMOUNT)= 0 
     ) a;
     
-   INSERT INTO FI_AGINGAGS  (id, PERIOD_NAME,SUBJECT_ID,JE_SOURCE,AGENT_NAME,POLICY_NO,AGING_PERIOD,BUSINESS_SCENE_NO)
-   SELECT sequence_FI_AGINGAGS.nextval AS id,
-         PERIOD_NAME,SUBJECT_ID,JE_SOURCE,AGENT_NAME,POLICY_NO,AGING_PERIOD,BUSINESS_SCENE_NO  
-         FROM(
-            SELECT PERIOD_NAME,SUBJECT_ID,JE_SOURCE,AGENT_NAME,POLICY_NO,AGING_PERIOD,BUSINESS_SCENE_NO
-               FROM FINANCE_Aging_analysis a WHERE 1=1 AND a.JE_SOURCE='AGS' AND a.AGING_PERIOD=executemonth
-                GROUP BY PERIOD_NAME,SUBJECT_ID,JE_SOURCE,AGENT_NAME,POLICY_NO,AGING_PERIOD,BUSINESS_SCENE_NO  HAVING SUM(amount) = 0);
-	
     --进行结零处理
     DELETE FROM FINANCE_Aging_analysis c WHERE c.aging_period=executemonth  AND C.JE_SOURCE='PLIS' 
     AND EXISTS (SELECT 1 FROM FI_AGING B WHERE B.POLICY_NO = c.POLICY_NO  AND B.SUBJECT_ID = c.SUBJECT_ID);
@@ -48,18 +40,64 @@ BEGIN
     DELETE FROM FINANCE_Aging_analysis c WHERE c.aging_period=executemonth  AND C.JE_SOURCE='PLIS' 
     AND EXISTS (SELECT 1 FROM FI_AGING01 B WHERE B.POLICY_NO = c.POLICY_NO  AND B.BRANCH_CODE  = c.BRANCH_CODE AND B.SUBJECT_ID = c.SUBJECT_ID);
    
-    --佣金部分进行结零处理
-    DELETE FROM FINANCE_Aging_analysis c WHERE c.aging_period=executemonth  AND C.JE_SOURCE='AGS' 
-    AND EXISTS (SELECT 1 FROM FI_AGINGAGS B WHERE 
-     (B.POLICY_NO = c.POLICY_NO OR (B.POLICY_NO IS NULL AND c.POLICY_NO IS NULL))
-    AND (B.PERIOD_NAME = c.PERIOD_NAME OR (B.PERIOD_NAME IS NULL AND c.PERIOD_NAME IS NULL))
-    AND B.SUBJECT_ID = c.SUBJECT_ID
-    AND B.JE_SOURCE = c.JE_SOURCE
-    AND (B.BUSINESS_SCENE_NO = c.BUSINESS_SCENE_NO OR (B.BUSINESS_SCENE_NO IS NULL AND c.BUSINESS_SCENE_NO IS NULL))
-    AND (B.AGENT_NAME = c.AGENT_NAME OR (B.AGENT_NAME IS NULL AND c.AGENT_NAME IS NULL))
-    AND B.AGING_PERIOD = c.AGING_PERIOD);
+    -- AGS 第一轮：非空保单号按原七个维度计算合计，直接通过 ROWID 定位结零记录。
+    -- 不再生成或关联第一轮 FI_AGINGAGS 名单；空保单号仍由下方独立分支处理。
+    -- 原关联使用 SUBJECT_ID 等值匹配，不匹配空科目；此处保留该语义。
+    DELETE FROM FINANCE_Aging_analysis c
+    WHERE c.AGING_PERIOD = executemonth
+      AND c.JE_SOURCE = 'AGS'
+      AND c.POLICY_NO IS NOT NULL
+      AND c.SUBJECT_ID IS NOT NULL
+      AND c.ROWID IN (
+          SELECT q.RID
+          FROM (
+              SELECT a.ROWID AS RID,
+                     SUM(a.AMOUNT) OVER (
+                         PARTITION BY a.PERIOD_NAME,
+                                      a.SUBJECT_ID,
+                                      a.JE_SOURCE,
+                                      a.AGENT_NAME,
+                                      a.POLICY_NO,
+                                      a.AGING_PERIOD,
+                                      a.BUSINESS_SCENE_NO
+                     ) AS GROUP_AMOUNT
+              FROM FINANCE_Aging_analysis a
+              WHERE a.AGING_PERIOD = executemonth
+                AND a.JE_SOURCE = 'AGS'
+                AND a.POLICY_NO IS NOT NULL
+                AND a.SUBJECT_ID IS NOT NULL
+          ) q
+          WHERE q.GROUP_AMOUNT = 0
+      );
 	
-	-- 第一轮名单已使用完毕；清空工作名单，第二轮只能使用代理人整体结零的结果。
+	-- 第一轮补充：空保单号不写辅助表，也不替换成虚拟保单号。
+	-- 保留原分组维度及 SUM(amount)=0 口径，只清理本账期 AGS 的空保单号结零分组。
+    DELETE FROM FINANCE_Aging_analysis c
+    WHERE c.AGING_PERIOD = executemonth
+      AND c.JE_SOURCE = 'AGS'
+      AND c.POLICY_NO IS NULL
+      AND EXISTS (
+          SELECT 1
+          FROM (
+              SELECT PERIOD_NAME, SUBJECT_ID, JE_SOURCE, AGENT_NAME,
+                     POLICY_NO, AGING_PERIOD, BUSINESS_SCENE_NO
+              FROM FINANCE_Aging_analysis a
+              WHERE a.JE_SOURCE = 'AGS'
+                AND a.AGING_PERIOD = executemonth
+                AND a.POLICY_NO IS NULL
+              GROUP BY PERIOD_NAME, SUBJECT_ID, JE_SOURCE, AGENT_NAME,
+                       POLICY_NO, AGING_PERIOD, BUSINESS_SCENE_NO
+              HAVING SUM(amount) = 0
+          ) b
+          WHERE (b.PERIOD_NAME = c.PERIOD_NAME OR (b.PERIOD_NAME IS NULL AND c.PERIOD_NAME IS NULL))
+            AND b.SUBJECT_ID = c.SUBJECT_ID
+            AND b.JE_SOURCE = c.JE_SOURCE
+            AND (b.AGENT_NAME = c.AGENT_NAME OR (b.AGENT_NAME IS NULL AND c.AGENT_NAME IS NULL))
+            AND b.AGING_PERIOD = c.AGING_PERIOD
+            AND (b.BUSINESS_SCENE_NO = c.BUSINESS_SCENE_NO OR (b.BUSINESS_SCENE_NO IS NULL AND c.BUSINESS_SCENE_NO IS NULL))
+      );
+
+	-- 第二轮开始前清空工作名单，辅助表仅用于本轮代理人整体结零的结果。
 	-- 此处只清空结零辅助表，不清理历史明细，也不是重跑自动清理。
 	DELETE FROM FI_AGINGAGS;
 
